@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "AzSeo — SEO Analyzer",
   "version": "1.0.0",
-  "description": "Real-time SEO analysis & scoring for any webpage. Built by github.com/TheGreatAzizi",
+  "description": "Real-time SEO analysis & scoring for any webpage.Firefox port by @alexantSWE",
   "permissions": ["activeTab", "scripting"],
   "action": {
     "default_popup": "popup.html",
@@ -23,5 +23,11 @@
       "js": ["content.js"],
       "run_at": "document_idle"
     }
-  ]
+  ],
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "azseo@domain.com",
+      "strict_min_version": "109.0"
+    }
+  }
 }

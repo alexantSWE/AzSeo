@@ -17,7 +17,7 @@ const PTS_COLOR = { ok: '#22d97e', warn: '#f5c542', fail: '#ff4060', info: '#4d9
 
 // ─── Score Calculator ────────────────────────────────────
 function calculateScore(seo) {
-  const checks = [];
+  const checks =[];
   let total = 0;
 
   const add = (id, status, title, detail, pts, max, impact = 50) => {
@@ -25,7 +25,7 @@ function calculateScore(seo) {
     total += pts;
   };
 
-  // ── 1. Title [15]
+  // ── 1. Title[15]
   if (!seo.title.text) {
     add('title', 'fail', 'Missing <title> tag', 'The page title is crucial for SEO — it appears in SERPs and browser tabs.', 0, 15, 95);
   } else if (seo.title.length < 30) {
@@ -81,7 +81,7 @@ function calculateScore(seo) {
     add('canonical', 'warn', 'No canonical tag', 'Without canonical, duplicate content may dilute your rankings.', 0, 7, 70);
   }
 
-  // ── 7. Open Graph [6]
+  // ── 7. Open Graph[6]
   const ogCount = Object.values(seo.openGraph).filter(Boolean).length;
   if (ogCount >= 3) {
     add('og', 'ok', `Open Graph tags complete (${ogCount}/4)`, 'og:title, og:description, og:image all present. 🎉', 6, 6, 50);
@@ -99,14 +99,14 @@ function calculateScore(seo) {
     add('viewport', 'fail', 'No viewport meta tag', 'Missing viewport breaks mobile rendering — a key mobile-first ranking factor.', 0, 5, 75);
   }
 
-  // ── 9. Lang [5]
+  // ── 9. Lang[5]
   if (seo.lang.exists) {
     add('lang', 'ok', `Language declared: ${seo.lang.value}`, 'Helps search engines serve the right content to the right audience.', 5, 5, 45);
   } else {
     add('lang', 'warn', 'No lang attribute on <html>', 'Add lang="en" (or your locale) to the HTML element.', 0, 5, 45);
   }
 
-  // ── 10. Structured Data [5]
+  // ── 10. Structured Data[5]
   if (seo.structuredData.count > 0) {
     const types = seo.structuredData.types.slice(0, 3).join(', ');
     add('schema', 'ok', `${seo.structuredData.count} Schema.org block${seo.structuredData.count > 1 ? 's' : ''}`, `Types: ${types || 'Unknown'}`, 5, 5, 60);
@@ -153,7 +153,25 @@ function calculateScore(seo) {
     add('lazy', 'warn', 'No lazy loading on images', 'Add loading="lazy" to below-the-fold images to improve Core Web Vitals.', 0, 2, 40);
   }
 
-  return { score: Math.min(100, Math.round(total)), checks };
+  // ── 16. Indexing (Robots) [10]
+  if (seo.robots.exists && seo.robots.content.toLowerCase().includes('noindex')) {
+    add('robots', 'fail', 'Page is blocked from indexing', 'The meta robots tag contains "noindex". Search engines will ignore this page.', 0, 10, 100);
+  } else {
+    add('robots', 'ok', 'Page is indexable', 'No "noindex" directives found. Search engines can crawl this page.', 10, 10, 100);
+  }
+
+  // ── 17. URL Structure [3]
+  if (seo.url.hasUnderscores) {
+    add('url', 'warn', 'URL contains underscores', 'Google treats hyphens as word separators, but underscores join words. Use hyphens.', 0, 3, 40);
+  } else {
+    add('url', 'ok', 'SEO-friendly URL structure', 'No underscores detected in the URL path.', 3, 3, 40);
+  }
+
+  // Dynamic percentage math
+  const maxTotal = checks.reduce((s, c) => s + c.max, 0);
+  const scorePercentage = Math.round((total / maxTotal) * 100);
+
+  return { score: Math.max(0, Math.min(100, scorePercentage)), checks };
 }
 
 // ─── Verdict ─────────────────────────────────────────────
@@ -168,12 +186,14 @@ function getVerdict(score) {
 
 // ─── Generate Tips ────────────────────────────────────────
 function generateTips(seo, checks) {
-  const tips = [];
+  const tips =[];
   const byId = {};
   checks.forEach(c => byId[c.id] = c);
 
   const tip = (priority, title, body, impact) => tips.push({ priority, title, body, impact });
 
+  if (byId.robots?.status === 'fail')
+    tip('crit', 'Remove "noindex" directive', 'Your meta robots tag contains "noindex". This is a critical issue if you want this page to appear in search results.', 100);
   if (byId.https?.status === 'fail')
     tip('crit', 'Enable HTTPS / SSL', 'HTTPS is a confirmed Google ranking signal and builds user trust. Get a free certificate from Let\'s Encrypt or enable it via your hosting provider\'s control panel.', 95);
   if (byId.title?.status === 'fail')
@@ -196,6 +216,8 @@ function generateTips(seo, checks) {
     tip('med', 'Add Twitter Card meta tags', 'Include twitter:card, twitter:title, twitter:description, and twitter:image to control how your content renders when shared on X (Twitter).', 35);
   if (byId.content?.status !== 'ok')
     tip('med', 'Expand page content', `With only ${seo.content.wordCount} words, this page may be seen as "thin content." Aim for 600+ words with relevant keywords, headings, and genuinely useful information for users.`, 55);
+  if (byId.url?.status === 'warn')
+    tip('low', 'Replace URL underscores with hyphens', 'Search engines read "my_page" as "mypage", but "my-page" as "my page". Redirect to a hyphenated URL if possible.', 40);
   if (byId.h2?.status !== 'ok')
     tip('low', 'Improve heading hierarchy', 'Add multiple H2 and H3 headings to break up content. This improves readability, helps search engines understand content structure, and creates natural keyword placement opportunities.', 40);
   if (byId.lang?.status !== 'ok')
@@ -465,12 +487,18 @@ async function runAnalysis() {
     // Inject content script
     await chrome.scripting.executeScript({ target: { tabId: tab.id }, files: ['content.js'] }).catch(() => {});
 
-    const seoData = await new Promise((res, rej) => {
-      chrome.tabs.sendMessage(tab.id, { action: 'analyzeSEO' }, (r) => {
-        if (chrome.runtime.lastError) rej(new Error(chrome.runtime.lastError.message));
-        else res(r);
+    // Use a promise-based approach for the message
+    const seoData = await new Promise((resolve, reject) => {
+      chrome.tabs.sendMessage(tab.id, { action: 'analyzeSEO' }, (response) => {
+        if (chrome.runtime.lastError) {
+          // If the tab was just refreshed, we might need a tiny delay or to try again
+          reject(new Error("Could not connect to page. Try refreshing."));
+        } else {
+          resolve(response);
+        }
       });
     });
+
 
     renderResults(seoData);
   } catch (err) {

@@ -430,9 +430,18 @@
     .tab.active { color: var(--cyan); }
     .tab.active::after { opacity: 1; transform: scaleX(1); }
 
-    /* ─── Panels ─── */
-    .panel { display: none; overflow-y: auto; max-height: 290px; }
+/* ─── Panels ─── */
+    .panel {
+      display: none;
+      overflow-y: auto;
+      max-height: 290px;
+      /* Native Firefox Scrollbars */
+      scrollbar-width: thin;
+      scrollbar-color: var(--ink4) transparent;
+    }
     .panel.active { display: block; }
+
+    /* Chrome/Edge Fallback */
     .panel::-webkit-scrollbar { width: 3px; }
     .panel::-webkit-scrollbar-track { background: transparent; }
     .panel::-webkit-scrollbar-thumb { background: var(--ink4); border-radius: 2px; }
