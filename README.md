@@ -30,6 +30,11 @@
 
 </div>
 
+# AzSeo — Firefox Version
+This is a Firefox port of the [Original AzSeo]([AzSeo](https://github.com/TheGreatAzizi/AzSeo--Real-time-SEO-analysis-ChromeExtension)) by @TheGreatAzizi.
+
+**Adapted for Firefox by:** @alexantSWE
+
 ---
 
 ## ✦ What is AzSeo?
