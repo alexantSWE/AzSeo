@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "AzSeo — SEO Analyzer",
   "version": "1.0.0",
-  "description": "Real-time SEO analysis & scoring for any webpage.Firefox port by @alexantSWE",
+  "description": "Real-time SEO analysis & scoring for any webpage.Built by @TheGreatAzizi , Firefox port by @alexantSWE",
   "permissions": ["activeTab", "scripting"],
   "action": {
     "default_popup": "popup.html",
