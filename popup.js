@@ -4,6 +4,7 @@
 // ═══════════════════════════════════════════════════════
 
 const CIRC = 2 * Math.PI * 52; // stroke-dasharray for r=52
+let currentSeoData = null;
 
 // ─── SVG Icons ──────────────────────────────────────────
 const ICON = {
@@ -166,7 +167,25 @@ function calculateScore(seo) {
   } else {
     add('url', 'ok', 'SEO-friendly URL structure', 'No underscores detected in the URL path.', 3, 3, 40);
   }
+  // ── 18. Heading Hierarchy [3]
+  let skippedHeading = false;
+  let prev = 0;
+  for (const level of seo.headings.order) {
+    if (prev !== 0 && level > prev + 1) { skippedHeading = true; break; }
+    prev = level;
+  }
+  if (seo.headings.order.length > 0 && skippedHeading) {
+    add('hSkip', 'warn', 'Heading levels skipped', 'Jumping directly from H1 to H3 (skipping H2) confuses screen readers and search engines.', 0, 3, 30);
+  } else {
+    add('hSkip', 'ok', 'Proper heading hierarchy', 'No skipped heading levels detected.', 3, 3, 30);
+  }
 
+  // ── 19. Link Health [4]
+  if (seo.links.empty > 0) {
+    add('links', 'warn', `${seo.links.empty} broken/empty links`, 'Empty links (href="#") hurt usability and block crawlers.', 1, 4, 40);
+  } else {
+    add('links', 'ok', 'Links are healthy', `No empty links found. ${seo.links.nofollow} nofollow links.`, 4, 4, 40);
+  }
   // Dynamic percentage math
   const maxTotal = checks.reduce((s, c) => s + c.max, 0);
   const scorePercentage = Math.round((total / maxTotal) * 100);
@@ -224,6 +243,10 @@ function generateTips(seo, checks) {
     tip('low', 'Declare page language', 'Add lang="en" (or your locale) to the <html> element. This helps search engines serve the right language results and improves accessibility.', 45);
   if (byId.lazy?.status === 'warn')
     tip('low', 'Add lazy loading to images', 'Add loading="lazy" to images below the fold. This improves Core Web Vitals (LCP/CLS), which are direct Google ranking factors since 2021.', 40);
+  if (byId.hSkip?.status === 'warn')
+    tip('low', 'Fix heading hierarchy', 'Do not skip heading levels. An H3 should always be nested under an H2. This helps accessibility and SEO.', 30);
+  if (byId.links?.status === 'warn')
+    tip('med', 'Remove empty links', 'Links with href="#" or javascript:void(0) offer no value to search engine crawlers and create bad UX.', 40);
   if (!tips.length)
     tip('low', '🎉 Outstanding SEO health!', 'This page ticks all the key SEO boxes. Focus on content quality, earning authoritative backlinks, and monitoring Core Web Vitals in Google Search Console for continued growth.', 20);
 
@@ -239,20 +262,34 @@ function renderChecks(checks) {
     const div = document.createElement('div');
     div.className = `check-item ${c.status}`;
     div.style.animationDelay = `${i * 35}ms`;
+
+    // --- CLICK TO HIGHLIGHT FEATURE ---
+    if (c.id === 'img' && (c.status === 'warn' || c.status === 'fail')) {
+      div.style.cursor = 'pointer';
+      div.title = 'Click to highlight images missing alt text on the page';
+      div.addEventListener('click', async () => {
+        const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+        chrome.tabs.sendMessage(tab.id, { action: 'highlightImages' });
+        // Visual flash effect on popup click
+        const origBg = div.style.backgroundColor;
+        div.style.backgroundColor = 'rgba(255,64,96,0.15)';
+        setTimeout(() => div.style.backgroundColor = origBg, 300);
+      });
+    }
+
     div.innerHTML = `
-      <div class="check-icon">${ICON[c.status]}</div>
-      <div class="check-body">
-        <div class="check-title">${c.title}</div>
-        <div class="check-detail">${c.detail}</div>
-      </div>
-      <div class="check-score">
-        <div class="cs-pts" style="color:${pts_color}">${c.pts}</div>
-        <div class="cs-max">/${c.max}pts</div>
-      </div>`;
+    <div class="check-icon">${ICON[c.status]}</div>
+    <div class="check-body">
+    <div class="check-title">${c.title}${c.id === 'img' && c.status !== 'ok' ? ' <span style="font-size:8px; opacity:0.6;">(Click to Highlight)</span>' : ''}</div>
+    <div class="check-detail">${c.detail}</div>
+    </div>
+    <div class="check-score">
+    <div class="cs-pts" style="color:${pts_color}">${c.pts}</div>
+    <div class="cs-max">/${c.max}pts</div>
+    </div>`;
     list.appendChild(div);
   });
 }
-
 // ─── Render: Overview ────────────────────────────────────
 function renderOverview(seo, checks) {
   const wrap = document.getElementById('overviewWrap');
@@ -499,7 +536,7 @@ async function runAnalysis() {
       });
     });
 
-
+    currentSeoData = seoData; // Save it for our export button!
     renderResults(seoData);
   } catch (err) {
     document.getElementById('loading').style.display = 'none';
@@ -512,3 +549,26 @@ async function runAnalysis() {
 
 document.getElementById('rescanBtn').addEventListener('click', runAnalysis);
 runAnalysis();
+
+// ─── Export Logic ──────────────────────────────────────────
+document.getElementById('exportBtn').addEventListener('click', () => {
+  if (!currentSeoData) return;
+  const { score, checks } = calculateScore(currentSeoData);
+
+  let report = `AZSEO REPORT FOR: ${currentSeoData.url.full}\n`;
+  report += `SCORE: ${score}/100\n`;
+  report += `GENERATED ON: ${new Date().toLocaleString()}\n`;
+  report += `-------------------------------------------------\n\n`;
+
+  checks.forEach(c => {
+    report += `[${c.status.toUpperCase()}] ${c.title}\n    ${c.detail}\n\n`;
+  });
+
+  const blob = new Blob([report], { type: 'text/plain' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `seo-report-${currentSeoData.url.hostname}.txt`;
+  a.click();
+  URL.revokeObjectURL(url);
+});
